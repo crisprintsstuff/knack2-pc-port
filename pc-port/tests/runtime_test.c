@@ -90,6 +90,11 @@ static DWORD WINAPI worker(void *argument) {
 
 int main(void) {
     SetEnvironmentVariableA("ISS_MAPPING_CACHE","1");
+    // This test asserts emulation semantics, including that a site outside the supported
+    // displacement range is refused and counted. ISS_TLS_PATCH rewrites such a site instead of
+    // refusing it, and run_game.ps1 and the launcher both export it, so a developer shell can
+    // have it set. Clear it before the first emulate call, which is where the mode is read.
+    SetEnvironmentVariableA("ISS_TLS_PATCH", NULL);
     test_sparse_copy();
     CHECK(save_pattern_matches("infamousssUser0","infamousss%"));
     CHECK(save_pattern_matches("infamousssAuto1","INFAMOUSSSAUTO_"));
