@@ -28,10 +28,14 @@ carries over.
 
 One build, one identity, declared in two files:
 
-- `pc-port/scripts/game_id.py` — title id, title, the expected `eboot.bin` sha256, and the modules
-  that get linked when the dump has them.
-- `pc-port/src/game.h` — the same title id and title for the C runtime, which keys saves, trophies
-  and GPU cache paths on it.
+- `pc-port/scripts/game_id.py` — title id, title, **two** sha256 values (the `eboot.bin` stub and
+  the `game.elf` it loads), and the modules that get linked when the dump has them.
+- `pc-port/src/game.h` — the same identity for the C runtime, which keys saves, trophies and GPU
+  cache paths on it, plus the two entry points (`GAME_STUB_ENTRY` `0x4fa0`, `GAME_MAIN_ENTRY` `0x80`).
+
+This game boots in two stages — `eboot.bin` is a 37 KB loader that loads `/app0/game.elf`, which is
+the real 20 MB executable — so both hashes have to match before a run means anything. Details and the
+measured import breakdown are in `docs/STATUS.md` and `docs/IMPORTS.md`.
 
 Other regional builds are refused until someone reviews them, not silently accepted. Changing
 either file is a change of target: say so in the commit subject and in `docs/STATUS.md`.

@@ -13,6 +13,9 @@ corrected as soon as the real build teaches something.
 
 - **The loader and the module linker.** SELF/ELF preparation, relocations, TLS per module and thread,
   `DTVMOD64` handling, identity-plus-version import resolution. The PS4 ABI does not change per game.
+  What does not come with it is the *second* stage: in got-pc-port the eboot is the game, while here
+  `eboot.bin` is a stub that loads `/app0/game.elf` and the real entry point (`+0x80`) is in the
+  loaded image. That staging has to be written here.
 - **The kernel and library stubs, as shapes.** Memory arenas and their `MapViewOfFile3` views,
   thread and sync primitives, event queues, file I/O through a host staging buffer, RTC, offline PSN,
   save data containers, trophy plumbing, audio through SDL, pad and touchpad input. Each game calls a
@@ -37,8 +40,10 @@ corrected as soon as the real build teaches something.
   label table — those are *Ghost of Tsushima*'s engine. Knack II's engine is a different one and will
   have its own scheduling design. Do not assume a similar shape.
 - **Its import inventory and stub set.** Which functions the eboot imports, and in which libraries,
-  is a property of the binary. Regenerate the inventory from this game's dump; expect a different
-  libc/Fios2 situation and different graphics entry points.
+  is a property of the binary. This game's inventory is already measured — see `docs/STATUS.md`:
+  778 imports across 43 libraries in `game.elf`, including `libSceJson2` (40), the font libraries
+  (36) and `libSceJobManager` (7), none of which the earlier ports had to answer. Regenerate the
+  per-function detail from the dump; do not reuse another title's stub list.
 - **Its tuned settings and their measurements.** `ISS_UNIFIED_RANGE=0x1500000000:0x56e00000`, the
   64 KB fault window, the interrupt-merge timings, the `INT_SEL 3` workaround, the English-language
   default — each was measured against one game's behaviour. Start from the code defaults, measure,
