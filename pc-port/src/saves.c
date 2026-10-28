@@ -207,15 +207,24 @@ static int32_t GUEST_ABI delete_save(const Delete *d){
 }
 // Saves of another title (PS4 to PS5 transfers): none exist on this PC.
 static int32_t GUEST_ABI transferring_mount(const void *mount,void *result){(void)result;if(!initialized)return err(1);if(!mount)return err(0);return err(8);}
+// api_names.h only names symbols this title imports. CUSA08014 imports six of these thirteen
+// (Initialize3, Terminate, Mount2, Umount, SetParam, Delete). DirNameSearch, SaveIcon, the four
+// save-memory calls and TransferringMount are implemented here, and save_search_test asks for
+// DirNameSearch by NID, but a name lookup returns "" for anything absent from the import table,
+// so those handlers were unreachable from the game and from the test. The NID is the first field
+// of the identity and does not depend on that table.
+static int nid_is(const char *identity,const char *nid){
+    size_t n=strlen(nid);return !strncmp(identity,nid,n)&&identity[n]=='#';
+}
 uintptr_t save_resolve(const char *identity){
-    if(!strstr(identity,"#libSceSaveData#1#libSceSaveData#257"))return 0;const char *api=runtime_api_name(identity);
-#define API(n,f) if(!strcmp(api,n))return (uintptr_t)f
-    API("sceSaveDataInitialize3",initialize);API("sceSaveDataTerminate",terminate);API("sceSaveDataMount2",mount_save);
-    API("sceSaveDataUmount",umount_save);API("sceSaveDataSetParam",set_param);API("sceSaveDataDirNameSearch",search);
-    API("sceSaveDataSaveIcon",save_icon);
-    API("sceSaveDataSetupSaveDataMemory2",memory_setup);API("sceSaveDataGetSaveDataMemory2",memory_get);
-    API("sceSaveDataSetSaveDataMemory2",memory_set);API("sceSaveDataSyncSaveDataMemory",memory_sync);
-    API("sceSaveDataDelete",delete_save);API("sceSaveDataTransferringMount",transferring_mount);
+    if(!strstr(identity,"#libSceSaveData#1#libSceSaveData#257"))return 0;
+#define API(nid,f) if(nid_is(identity,nid))return (uintptr_t)f
+    API("TywrFKCoLGY",initialize);API("yKDy8S5yLA0",terminate);API("0z45PIH+SNI",mount_save);
+    API("BMR4F-Uek3E",umount_save);API("85zul--eGXs",set_param);API("dyIhnXq-0SM",search);
+    API("c88Yy54Mx0w",save_icon);
+    API("oQySEUfgXRA",memory_setup);API("QwOO7vegnV8",memory_get);
+    API("cduy9v4YmT4",memory_set);API("wiT9jeC7xPw",memory_sync);
+    API("S1GkePI17zQ",delete_save);API("WAzWTZm1H+I",transferring_mount);
 #undef API
     return 0;
 }
