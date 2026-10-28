@@ -51,8 +51,6 @@ GPU code; they do not match this title and were not deleted.
 
 ## What the dump says (all of this measured, not assumed)
 
-## What the dump says (all of this measured, not assumed)
-
 From `I:\More Stuff\Knack 2\CUSA08014`, 48.6 GB unpacked, `param.sfo` `TITLE_ID` `CUSA08014`,
 `TITLE` `KNACK 2`, `CONTENT_ID` `UP9000-CUSA08014_00-KNACK20000000000`, `APP_VER` `01.00`.
 
@@ -95,13 +93,92 @@ libc unless one is missing.
 `data/eboot.dat` is 28 bytes: `-w =10 -cursoroff -region=a`. That is a launcher-tool leftover, not
 something the port reads.
 
+## Building it on Windows
+
+Nothing below has been run, but every command is the one in the merged script named beside it, so a
+failure here is a real bug in the script and not a typo in the notes.
+
+**What the machine needs.** Windows 11, Visual Studio 2022 (or later) with *Desktop development with
+C++* and *C++ CMake tools for Windows*, Python 3.12, and `clang-cl` at `tools/llvm/bin/clang-cl.exe`.
+That path is hard-coded in `build.py` and `build_gpu.py`. `tools/` and `research/` are git-ignored, so
+if got-pc-port is already checked out on the same machine, copy its `tools/` and its
+`research/shadPS4-perf` across instead of downloading LLVM again.
+
+**1. The renderer's base.** The renderer builds against shadPS4-perf at `584374867d6a`, which is the
+default branch of the private mirror:
+
+```bat
+git clone -b port-base https://github.com/crisprintsstuff/shadPS4-perf research\shadPS4-perf
+cd research\shadPS4-perf
+git submodule update --init --recursive
+git apply ..\..\pc-port\third_party\shadPS4-perf-local.patch
+```
+
+**2. The CMake dependencies.** From the repo root, in a shell where Visual Studio is discoverable
+(`build_deps.cmd` finds it with vswhere, or set `VCVARS64` to a `vcvars64.bat`):
+
+```bat
+pc-port\scripts\build_deps.cmd
+```
+
+That yields `build-opt/` and `build-sdl/`. Both are needed: `build_gpu.py` reads the compile defines,
+include paths and link libraries straight out of `build-opt/build.ninja`, and the probe links
+`build-sdl/SDL3.dll`.
+
+**3. Read and link the dump.** This only reads your files and writes under `pc-port/out/`, which is
+git-ignored:
+
+```bat
+cd pc-port\scripts
+python prepare.py --game "I:\More Stuff\Knack 2\CUSA08014"
+python link_modules.py --game "I:\More Stuff\Knack 2\CUSA08014"
+```
+
+Both refuse the folder unless `eboot.bin` and `game.elf` match their hashes, both entry points are the
+expected ones, and `param.sfo` names `CUSA08014`. `prepare.py` writes `boot.bin`, `imports.csv` and
+`analysis.json`; `link_modules.py` writes `boot-linked.bin`, `linked-imports.csv` and `link.json`.
+Only the stub is in `boot.bin`; `game.elf` is in `boot-linked.bin`.
+
+**4. Build the probe and the renderer.**
+
+```bat
+python build.py
+python build_gpu.py --jobs 8
+```
+
+`build.py` links `out/iss-probe.exe` and then compiles and runs the C tests (runtime, sync, pad, save
+dialog, save search, portable libc, readback hint) before returning. `build_gpu.py` compiles the
+shadPS4 sources plus `gpu/overrides` against clang-cl and links `out/iss-gpu.dll`; `--jobs` is capped
+at 8, and `--dry-run` prints the whole configuration without compiling.
+
+**5. Run it.** Put the game folder on the first line of `pc-port/out/game_dir.txt`, then from the repo
+root:
+
+```bat
+pc-port\scripts\run_game.ps1
+```
+
+The script sets `ISS_GAME_DIR`, `ISS_GPU=1` and `ISS_TLS_PATCH=1`, runs
+`iss-probe.exe boot-linked.bin --entry`, and writes `run.log` and `frames.csv` to the repo root.
+`ISS_FAULT_WINDOW_KB` and `ISS_UNIFIED_RANGE` stay unset on purpose. Flags: `-HangReport <seconds>`
+writes `hang-report.txt` if a frame stalls that long, `-Dump "+0xADDRESS:0xSIZE"`,
+`-DumpReg "main:r13:0x200"`, `-TraceMspace`, `-IrqLog`, `-Profile`. Summarize a run with
+`python pc-port\scripts\analyze_performance.py frames.csv`.
+
+**The first run is a test of the second-stage guess, not of the game.** Three outcomes, each telling
+you something different: it stops in the stub before the load call, meaning the stub does something
+other than `sceKernelLoadStartModule`; it reaches the load and dies, meaning the module-start frame is
+wrong; or it enters `game.elf` at `+0x80` and traps on an unimplemented import, which is the good
+outcome and the number to record in *Next step*. `-HangReport 40` is the cheapest way to see which.
+
 ## Next step
 
-1. On Windows, build the probe and run `prepare.py` then `link_modules.py` against the dump. Both
-   hashes have to match before a run means anything.
-2. Run to the first unimplemented import and record it here with its library and arguments. The
-   stub's unnamed second libkernel import is a likely first stop, if it is not
-   `sceKernelLoadStartModule`.
+1. On Windows, follow *Building it on Windows* above until `run.log` exists. Nothing in the repo has
+   been compiled yet, so the build scripts themselves are unproven.
+2. Record where the first run stops. If it reaches `game.elf`, write down the first unimplemented
+   import with its library and arguments, and move this file's *Where the work stops* section onto
+   that. If it stops before that, the guess about how the stub loads `game.elf` is wrong, and that
+   becomes the next thing to look at.
 
 ## Known unknowns
 
