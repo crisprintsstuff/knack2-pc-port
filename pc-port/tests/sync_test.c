@@ -25,7 +25,7 @@ static void *GUEST_ABI increment(void *data){
 static DWORD WINAPI ownership(void *arg){(void)arg;CHECK(mutex_try(&counter_mutex)==(int32_t)UINT32_C(0x80020010));CHECK(mutex_unlock(&counter_mutex)==(int32_t)UINT32_C(0x80020001));return 0;}
 static uintptr_t fn(const char *id){uintptr_t f=runtime_resolve(id,0);CHECK(f);return f;}
 int main(void){
-    GuestModule module={0,sizeof(fixture),0,4096,0,48,8,1};runtime_configure(fixture,sizeof(fixture),&module,1,1024);
+    GuestModule module={0,sizeof(fixture),0,4096,0,48,8,1,0};runtime_configure(fixture,sizeof(fixture),&module,1,1024);
     Unary attr_init=(Unary)fn("F8bUHwAG284#libkernel#1#libkernel#257");
     Unary attr_destroy=(Unary)fn("smWEktiyyG0#libkernel#1#libkernel#257");
     SetType set_type=(SetType)fn("iMp8QpE+XO4#libkernel#1#libkernel#257");
