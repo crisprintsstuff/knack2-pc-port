@@ -100,10 +100,12 @@ int main(void) {
     CHECK(!save_pattern_matches("infamousssUser0","infamousss*"));
     test_protected_io();
     fixture[4096] = 0x11; fixture[4352] = 0x22;
+    // The last field is the module flags word; 0 means the module starts with the others, which
+    // is what these fixtures exercise. Only game.elf sets bit 0 (deferred).
     GuestModule modules[] = {
-        {0, 8192, 0, 4096, 1, 48, 8, 1},
-        {0, 8192, 0, 4352, 1, 128, 16, 2},
-        {0, 8192, 0, 4608, 0, 64, 8, 3}
+        {0, 8192, 0, 4096, 1, 48, 8, 1, 0},
+        {0, 8192, 0, 4352, 1, 128, 16, 2, 0},
+        {0, 8192, 0, 4608, 0, 64, 8, 3, 0}
     };
     runtime_configure(fixture, sizeof(fixture), modules, 3, 1024);
     get_tls = (TlsGet)runtime_resolve("vNe1w4diLCs#libkernel#1#libkernel#257", 0);
