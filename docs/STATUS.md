@@ -5,9 +5,51 @@ step is. Newest state first; keep the history short.
 
 ## Where the work stops
 
-**Nothing has been built or run.** On 2026-10-28 the decrypted US dump was inspected and its identity
-recorded; the runtime, the renderer, the launcher and the scripts are still in
-[got-pc-port](https://github.com/crisprintsstuff/got-pc-port). Bringing them over is the next task.
+**The runtime is in the tree and the two-stage load is written. Nothing has been built or run.**
+This environment has no Windows toolchain (no clang-cl, Visual Studio or CMake), so `iss-probe.exe`,
+`iss-gpu.dll` and the launcher were not compiled, and no dump was linked or executed. The first
+unimplemented import is still unknown. What was checked here is the Python linker
+(`pc-port/tests/test_link_modules.py`, including the deferred-module flag) and the portable libc
+tests (`libc_portable_test.c`).
+
+## What the code does now
+
+`pc-port/` is the got-pc-port runtime, renderer bridge, launcher, scripts and tests, with this
+game's identity left as it was: both hashes in `game_id.py`, and `GAME_STUB_ENTRY` `0x4fa0`,
+`GAME_MAIN_ENTRY` `0x80`, `GAME_MAIN_PATH` `/app0/game.elf` in `game.h`. Saves, trophies and the
+GPU cache key off `GAME_TITLE_ID`.
+
+`prepare.py`, `link_modules.py` and the launcher refuse a folder unless `eboot.bin` and `game.elf`
+both match those hashes and those entry points, and unless `sce_module` has all three of `libc.prx`,
+`libSceFios2.prx` and `libSceJobManager.prx`, or none of them. `boot.bin` is still only the stub.
+`boot-linked.bin` contains the stub, the bundled modules and `game.elf`.
+
+**Two-stage boot.** The stub is not disassembled here; the dump is not in this environment. The
+measured facts are that it is 0x61a4 bytes, its entry is `+0x4fa0`, and it imports two libkernel
+functions, one `libSceSystemService` function and 59 libc functions, with the string
+`/app0/game.elf`. That is treated as `sceKernelLoadStartModule("/app0/game.elf")` (the backslash
+form of the same path is accepted; any other path still returns "not available"). The second
+libkernel import is not named in the inventory. If it is not this call, it still traps.
+
+`game.elf` is parsed, relocated and import-bound by the existing linker, the same one that links
+the PRXs, and its module record has flags bit 0 set. The probe therefore does not run its `DT_INIT`
+or its entry while it is starting the PRXs. It does enter the stub at `+0x4fa0`. TLS for `game.elf`
+is reserved with the other modules before that, so the block exists early; only the code waits.
+When the stub calls `sceKernelLoadStartModule`, the runtime runs `game.elf`'s `DT_INIT` if the image
+has one, then calls module base `+0x80` as `(args, argp, NULL)`. That is the libkernel module-start
+contract, not a trace of the bytes at `+0x4fa0`. If that entry is actually a CRT `_start` with a
+different frame, the run will fault, and that has not been tried. The SDK version handed to the GPU
+is the stub's `sceProcParam`, not `game.elf`'s; linking fails if the stub does not have exactly one.
+Whether the stub has that segment was not re-checked here.
+
+Code-address patches from inFAMOUS and Ghost of Tsushima are not installed. `native_install_hooks`
+returns immediately unless `ISS_LEGACY_HOOKS=1`, and the probe does not call it. The old save-name
+call at `+0x1e50a0` is gone. The pause-guard counter and the two readback sites stay in the code and
+stay off. `ISS_UNIFIED_RANGE` and `ISS_FAULT_WINDOW_KB` are not set: those numbers were measured on
+the other game. Renderer fast paths that compare Ghost of Tsushima shader hashes are still in the
+GPU code; they do not match this title and were not deleted.
+
+## What the dump says (all of this measured, not assumed)
 
 ## What the dump says (all of this measured, not assumed)
 
@@ -55,11 +97,11 @@ something the port reads.
 
 ## Next step
 
-1. Bring the got-pc-port tree over without its game-specific notes, its `out/` and its caches.
-2. Teach the loader the two-stage boot: link `eboot.bin`, let it load `/app0/game.elf`, and run the
-   game's entry at `+0x80` instead of the stub's `+0x4fa0`. This has no equivalent in got-pc-port and
-   is the first real piece of new code.
-3. Run to the first unimplemented import and record it here with its library and arguments.
+1. On Windows, build the probe and run `prepare.py` then `link_modules.py` against the dump. Both
+   hashes have to match before a run means anything.
+2. Run to the first unimplemented import and record it here with its library and arguments. The
+   stub's unnamed second libkernel import is a likely first stop, if it is not
+   `sceKernelLoadStartModule`.
 
 ## Known unknowns
 
@@ -70,6 +112,6 @@ should be assumed from another title.
 
 ## Diagnostics
 
-Inherited from got-pc-port once the code is in: hang reports, dumps, `ISS_WATCH`, `PROBE_EVENT`,
-`frames.csv`. None of it exists in this repository yet, and none of its recorded offsets or hashes
-apply to this game.
+Hang reports, dumps, `ISS_WATCH`, `PROBE_EVENT` and `frames.csv` came over with the runtime. None of
+them has been produced for this game, and none of the offsets or hashes recorded against Ghost of
+Tsushima apply here. `ISS_WATCH` takes addresses; it has no default site.
