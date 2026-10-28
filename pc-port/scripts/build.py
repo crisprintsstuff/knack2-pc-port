@@ -73,6 +73,9 @@ def build(output=None):
     test_cmd = cmd[:]
     test_cmd[test_cmd.index(str(ROOT / 'src/probe.c'))] = str(ROOT / 'tests/runtime_test.c')
     test_cmd.insert(1, f'/I{ROOT / "src"}')
+    # probe.c defines runtime_start_deferred_module, and every test replaces probe.c with its own
+    # main, so the tests link this stand-in instead of the real second stage.
+    test_cmd.insert(test_cmd.index('/link'), str(ROOT / 'tests/deferred_module_stub.c'))
     test_cmd[test_cmd.index(f'/Fe:{executable}')] = f'/Fe:{out / "runtime-test.exe"}'
     subprocess.run(test_cmd, cwd=out, env=env, check=True)
     subprocess.run([str(out / 'runtime-test.exe')], cwd=out, check=True, timeout=10)
