@@ -1,0 +1,31 @@
+# Build outputs, runs, caches, saves
+/pc-port/out/
+/build/
+/build-opt/
+/build-sdl/
+*.obj
+*.exe
+*.dll
+*.pdb
+*.lib
+*.exp
+**/__pycache__/
+*.pyc
+# Launcher folder when run from the repo root, and run_game.ps1's outputs
+/user/
+/run.log
+/frames.csv
+/performance-summary.json
+/gpu-crash*.txt
+/gpu-stall-*.txt
+
+# Local dependencies (see README: Building)
+/research/
+/tools/
+
+# Local data and leftovers
+/SaveBackup/
+/sandbox/
+*.lnk
+**/HANDOFF-*.md
+*.antes-da-mudanca
