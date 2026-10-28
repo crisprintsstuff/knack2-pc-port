@@ -1,0 +1,15 @@
+{
+  "schema": "iss.feedback-atomic-candidates.v1",
+  "source_catalog": "binding0-atomic-catalog.json",
+  "source_sha256": "365603cec8c14da52cb253193d89e74c29bea21214d2025825450852760d9ad4",
+  "examined_spv_files": 2992,
+  "candidate_variants": 700,
+  "unique_hashes": 351,
+  "generated_header_sha256": "071233c4f6777df8cffae4097d70d7028469d0cc95023d7c33140f874eb4798f",
+  "known_output_strides": {
+    "0x3EA96DB0": 64,
+    "0x63E538C1": 80,
+    "0x9C58AA06": 112
+  },
+  "runtime_use": "structural filter only; descriptor/address/alias checks required"
+}

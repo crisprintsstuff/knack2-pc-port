@@ -1,0 +1,34 @@
+name: Launcher
+
+on:
+  push:
+    branches: [main]
+    paths: ['pc-port/launcher/**', 'pc-port/scripts/build_launcher.py', 'pc-port/scripts/vs_env.py', '.github/workflows/launcher.yml']
+  pull_request:
+    paths: ['pc-port/launcher/**', 'pc-port/scripts/build_launcher.py', 'pc-port/scripts/vs_env.py', '.github/workflows/launcher.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      # The runner has Visual Studio (found by vswhere) and LLVM; the launcher needs no other
+      # dependency and no game file.
+      - name: Build
+        env:
+          CLANG_CL: C:\Program Files\LLVM\bin\clang-cl.exe
+        run: python pc-port/scripts/build_launcher.py --output "pc-port/out/launcher/Knack II Launcher.exe"
+      # The launcher loads its font from assets\fonts next to the .exe (else it falls back to Tahoma).
+      - name: Add the fonts
+        run: |
+          New-Item -ItemType Directory -Force pc-port/out/launcher/assets | Out-Null
+          Copy-Item -Recurse pc-port/launcher/assets/fonts pc-port/out/launcher/assets/
+      - uses: actions/upload-artifact@v6
+        with:
+          name: launcher
+          path: pc-port/out/launcher/
+          if-no-files-found: error
