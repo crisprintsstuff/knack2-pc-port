@@ -180,8 +180,6 @@ outcome and the number to record in *Next step*. `-HangReport 40` is the cheapes
    that. If it stops before that, the guess about how the stub loads `game.elf` is wrong, and that
    becomes the next thing to look at.
 
-On the user's Windows checkout the build compiled clean and the tests passed, and a run reached `game.elf`'s entry, finished `DT_INIT` without aborting, and executed about 347,000 bytes of the game's own startup before an unrelated engine-side assertion.
-
 ## Known unknowns
 
 How the game behaves once it starts. Whether `libSceJobManager` can be satisfied by the runtime or has

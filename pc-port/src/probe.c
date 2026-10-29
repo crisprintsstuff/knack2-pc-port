@@ -312,10 +312,10 @@ static DWORD WINAPI hang_timer(void *seconds) {
 // was not disassembled in this tree (the dump is not here), so this does not replay its
 // instructions. link_modules has already parsed game.elf, relocated it and bound its imports,
 // the same work libkernel would do inside sceKernelLoadStartModule, and marked it deferred.
-// When the stub makes that call, this runs DT_INIT if the image has one and then the entry at
-// module base + GAME_MAIN_ENTRY. The call uses the libkernel module-start contract
-// (args, argp, NULL), which is what LoadStartModule passes to a loaded image. It is not a
-// trace of the bytes at +0x4fa0. A game entry that never returns never comes back to the stub.
+// When the stub makes that call, this enters the image at module base + GAME_MAIN_ENTRY and does
+// not call DT_INIT. game.elf +0x80 calls DT_FINI at +0xa1 and then its own DT_INIT at +0xad, so a
+// runtime call ran every constructor a second time. The entry takes rdi = &{count, argv[]}.
+// A game entry that never returns never comes back to the stub.
 int32_t runtime_start_deferred_module(uint64_t argc, const void *argv, int32_t *result) {
     const int32_t err_noent = (int32_t)UINT32_C(0x80020002);
     const int32_t err_invalid = (int32_t)UINT32_C(0x80020016);
@@ -335,18 +335,10 @@ int32_t runtime_start_deferred_module(uint64_t argc, const void *argv, int32_t *
     GuestModule *m = &modules[found];
     fprintf(stderr, "STAGE2 game.elf base=+0x%llx entry=+0x%x args=%llu\n",
             (unsigned long long)m->base, GAME_MAIN_ENTRY, (unsigned long long)argc);
-    if (m->init != UINT64_MAX) {
-        active_module = found;
-        phase = "game_init";
-        // DT_INIT is a constructor, not a function with a status: _init walks DT_INIT_ARRAY and
-        // falls through to pop/pop/ret without ever setting eax, so its return value is whatever the
-        // last constructor or the caller left there. game.elf's DT_INIT_ARRAY is empty (start == end
-        // == 0x127b870) and the call returned -1 from a function that returns nothing, which used to
-        // be treated as a failed start and made the stub raise 0xa0020002. Call it as void.
-        typedef void (GUEST_ABI *ModuleInit)(uint64_t, const void *, void *);
-        ((ModuleInit)(image + m->init))(argc, argv, NULL);
-        fprintf(stderr, "STAGE2 game.elf initializer returned\n");
-    }
+    // Left to the entry. Calling DT_INIT here as well ran every constructor a second time, and the
+    // second pass overran the debug-command registry past its 1849-entry cap (counter +0x16e7818,
+    // handler array +0x16eb1f0, trap +0x54f0e5).
+    fprintf(stderr, "STAGE2 game.elf DT_INIT left to its entry point\n");
     active_module = found;
     phase = "game_entry";
     // The guest entry takes rdi = &{count, argv[]}, not the count itself: game.elf +0x80 starts
@@ -530,7 +522,8 @@ int main(int argc, char **argv) {
             active_module = m;
             printf("Starting native module %llu at +0x%llx\n", (unsigned long long)m, (unsigned long long)modules[m].init);
             fflush(stdout);
-            // Same contract as game.elf above: DT_INIT is void, so a non-zero eax is not a failure.
+            // A bundled module's DT_INIT is a constructor. A non-zero eax is not a failed start.
+            // game.elf is not one of these: its own entry calls its DT_INIT, so the runtime does not.
             typedef void (GUEST_ABI *ModuleInit)(uint64_t, void *, void *);
             ((ModuleInit)(image + modules[m].init))(0, NULL, NULL);
             printf("Native module %llu initializer returned\n", (unsigned long long)m);
