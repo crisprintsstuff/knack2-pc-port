@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "content_profile.h"
+#include "game.h" // GAME_MAIN_PATH: the one path sceSystemServiceLoadExec may start
 typedef struct { const void *buffer; uint32_t size,reserved; } PlayGoInit;
 typedef struct { uint16_t chunk; int8_t locus,reserved; } ToDo;
 typedef struct { uint64_t completed,total; } Progress;
@@ -85,6 +86,41 @@ static int32_t GUEST_ABI system_string(int id,char *out,uint64_t size){
 static int32_t GUEST_ABI system_event(void *p){if(!p)return (int32_t)UINT32_C(0x80a10003);return (int32_t)UINT32_C(0x80a10004);}
 static int32_t GUEST_ABI system_safe_area(float *ratio){if(!ratio)return (int32_t)UINT32_C(0x80a10003);*ratio=1.0f;return 0;}
 static int32_t GUEST_ABI hide_splash(void){puts("System splash dismissed");return 0;}
+// The CUSA08014 stub's whole job. It reads /app0/data/eboot.dat, prints the token table, then calls
+// this with rsi = the token vector it just built and rdi = its first entry (stub +0xacc:
+// mov -0x298(%rbp),%rsi; mov (%rsi),%rdi). So argv[0] is already the path and the remaining entries
+// are the command line from eboot.dat. The stub never imports sceKernelLoadStartModule -- its only
+// libkernel imports are __stack_chk_fail and __stack_chk_guard -- so the deferred image game.elf is
+// started from here instead. The call does not return while the game runs, which is what the stub
+// expects of a successful launch.
+//
+// The vector is forwarded rather than reconstructed, so game.elf receives the -w=10 -cursoroff
+// -region=a command line the stub read from /app0/data/eboot.dat; a bare {path} was measurably
+// different from what a real launch passes. Nothing proves the array ends in a null slot, so each
+// entry is validated before use.
+static int32_t GUEST_ABI load_exec(const char *path,const char **argv){
+    if(!path)return (int32_t)UINT32_C(0x80a40002);
+    if(strcmp(path,GAME_MAIN_PATH)){fprintf(stderr,"SYSTEMSERVICE sceSystemServiceLoadExec(%s): not available\n",path);return (int32_t)UINT32_C(0x80a40002);}
+    fprintf(stderr,"SYSTEMSERVICE sceSystemServiceLoadExec(%s)\n",path);
+    static const char *forwarded[64]; // static: the guest may keep the vector past the call
+    uint64_t count=0;
+    for(const char **slot=argv;slot&&count<64;++slot){
+        const char *token=*slot;MEMORY_BASIC_INFORMATION info;
+        // A slot that is unreadable, in a page we cannot read, or not the address of a NUL-terminated
+        // string means the vector ended; a real command line never holds a non-string.
+        if(!token||!VirtualQuery(token,&info,sizeof(info)))break;
+        if(info.State!=MEM_COMMIT||info.Protect==PAGE_NOACCESS||(info.Protect&PAGE_GUARD))break;
+        uintptr_t end=(uintptr_t)token+(uintptr_t)info.RegionSize,stop=(uintptr_t)token;
+        while(stop<end&&*(const char *)stop)++stop;
+        if(stop>=end)break;
+        forwarded[count++]=token;
+    }
+    if(!count)forwarded[count++]=path;
+    fprintf(stderr,"STAGE2 game.elf argc=%llu",(unsigned long long)count);
+    for(uint64_t i=0;i<count;++i)fprintf(stderr," %s",forwarded[i]);
+    fputc('\n',stderr);
+    return runtime_start_deferred_module(count,forwarded,NULL);
+}
 // Local unpacked files need no optical-disc placement hint. This narrow contract
 // follows shadPS4 DiscMap Func_7C980FFB0AA27E7A; data I/O still uses real host files.
 static int32_t GUEST_ABI disc_local_hint(const char *path,int64_t offset,int64_t bytes,int *flags,int *a,int *b){
@@ -180,6 +216,9 @@ uintptr_t service_resolve(const char *identity){
         if(!strcmp(api,"sceNetCtlUnregisterCallback"))return (uintptr_t)netctl_unregister;
     }
     if(strstr(identity,"#libSceSystemService#1#libSceSystemService#257")){
+        // Keyed on the NID: the trap that first reached here reported this exact identity, and
+        // runtime_api_name only knows names this title imports, which is what broke save_resolve.
+        if(!strncmp(identity,"JoBqSQt1yyA#",12))return (uintptr_t)load_exec;
         if(!strcmp(api,"sceSystemServiceParamGetInt"))return (uintptr_t)system_param;
         if(!strcmp(api,"sceSystemServiceParamGetString"))return (uintptr_t)system_string;
         if(!strcmp(api,"sceSystemServiceGetStatus"))return (uintptr_t)system_status;

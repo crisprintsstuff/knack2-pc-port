@@ -338,19 +338,27 @@ int32_t runtime_start_deferred_module(uint64_t argc, const void *argv, int32_t *
     if (m->init != UINT64_MAX) {
         active_module = found;
         phase = "game_init";
-        typedef int (GUEST_ABI *ModuleInit)(uint64_t, const void *, void *);
-        int init = ((ModuleInit)(image + m->init))(argc, argv, NULL);
-        fprintf(stderr, "STAGE2 game.elf initializer returned %d\n", init);
-        if (init) {
-            stage_state = 0;
-            if (result) *result = init;
-            return err_invalid;
-        }
+        // DT_INIT is a constructor, not a function with a status: _init walks DT_INIT_ARRAY and
+        // falls through to pop/pop/ret without ever setting eax, so its return value is whatever the
+        // last constructor or the caller left there. game.elf's DT_INIT_ARRAY is empty (start == end
+        // == 0x127b870) and the call returned -1 from a function that returns nothing, which used to
+        // be treated as a failed start and made the stub raise 0xa0020002. Call it as void.
+        typedef void (GUEST_ABI *ModuleInit)(uint64_t, const void *, void *);
+        ((ModuleInit)(image + m->init))(argc, argv, NULL);
+        fprintf(stderr, "STAGE2 game.elf initializer returned\n");
     }
     active_module = found;
     phase = "game_entry";
-    typedef int (GUEST_ABI *ModuleStart)(uint64_t, const void *, void *);
-    int started = ((ModuleStart)(image + m->base + GAME_MAIN_ENTRY))(argc, argv, NULL);
+    // The guest entry takes rdi = &{count, argv[]}, not the count itself: game.elf +0x80 starts
+    // "mov (%rdi),%r14d; lea 0x8(%rdi),%r15", so passing argc loaded 4 as a pointer and faulted on
+    // address 0x4. The stub is entered the same way in main below. The block stays on this frame:
+    // the call does not return while the game runs, and the strings it points at are the caller's.
+    struct { uint64_t count; const char *args[65]; } entry_args;
+    entry_args.count = argc > 64 ? 64 : argc;
+    for (uint64_t i = 0; i < entry_args.count; ++i)
+        entry_args.args[i] = argv ? ((const char *const *)argv)[i] : NULL;
+    typedef int (GUEST_ABI *ModuleStart)(void *, void *);
+    int started = ((ModuleStart)(image + m->base + GAME_MAIN_ENTRY))(&entry_args, NULL);
     stage_result = started;
     stage_handle = (int32_t)m->tls_id;
     if (result) *result = started;
@@ -522,10 +530,10 @@ int main(int argc, char **argv) {
             active_module = m;
             printf("Starting native module %llu at +0x%llx\n", (unsigned long long)m, (unsigned long long)modules[m].init);
             fflush(stdout);
-            typedef int (GUEST_ABI *ModuleInit)(uint64_t, void *, void *);
-            int result = ((ModuleInit)(image + modules[m].init))(0, NULL, NULL);
-            printf("Native module %llu initializer returned %d\n", (unsigned long long)m, result);
-            if (result) fail("module initializer failed");
+            // Same contract as game.elf above: DT_INIT is void, so a non-zero eax is not a failure.
+            typedef void (GUEST_ABI *ModuleInit)(uint64_t, void *, void *);
+            ((ModuleInit)(image + modules[m].init))(0, NULL, NULL);
+            printf("Native module %llu initializer returned\n", (unsigned long long)m);
         }
     }
     phase = "guest_entry";
